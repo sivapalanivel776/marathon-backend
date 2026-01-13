@@ -20,6 +20,12 @@ enum RaceCategory {
 }
 
 
+enum Gender {
+  Male
+  Female
+  Others
+}
+
 enum PaymentStatus {
   PENDING
   PAID
@@ -30,12 +36,12 @@ model Registration {
   id                     String        @id @default(uuid())
   userId                 String?       @unique
   name                   String
-  email                  String
-  gender                 String
+  email                  String        @unique
+  gender                 Gender
   dateOfBirth            DateTime
   age                    Int
   presentAddress         String
-  mobileNumber           String
+  mobileNumber           String        @unique
   medicalHistory         String?
   tshirtSize             String
   raceCategory           RaceCategory
@@ -47,6 +53,36 @@ model Registration {
   razorpayOrderId        String?       @unique
   razorpayPaymentId      String?
   ticketId               String?       @unique
+  emailSent              Boolean       @default(false)
   createdAt              DateTime      @default(now())
   updatedAt              DateTime      @updatedAt
+}
+
+model TempRegistration {
+  id                     String        @id @default(uuid())
+  userId                 String?
+  name                   String
+  email                  String
+  gender                 Gender
+  dateOfBirth            DateTime
+  age                    Int
+  presentAddress         String
+  mobileNumber           String
+  medicalHistory         String?
+  tshirtSize             String
+  raceCategory           RaceCategory
+  emergencyContactName   String
+  emergencyContactMobile String
+  waiverAccepted         Boolean
+  amount                 Float
+  razorpayOrderId        String        @unique
+  createdAt              DateTime      @default(now())
+}
+
+model Admin {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

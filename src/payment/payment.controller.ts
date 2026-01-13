@@ -33,10 +33,9 @@ export class PaymentController {
         @Body('razorpayOrderId') razorpayOrderId: string,
         @Body('razorpayPaymentId') razorpayPaymentId: string,
         @Body('signature') signature: string,
-        @Body('email') email: string,
     ) {
-        if (!razorpayOrderId || !razorpayPaymentId || !signature || !email) {
-            throw new BadRequestException('Missing payment details or email');
+        if (!razorpayOrderId || !razorpayPaymentId || !signature) {
+            throw new BadRequestException('Missing payment details');
         }
 
         const isValid = this.paymentService.verifyPayment(
@@ -46,31 +45,65 @@ export class PaymentController {
         );
 
         if (isValid) {
-            const ticketId = `TICKET-${razorpayPaymentId}`;
+            let emailSent = false;
 
-            // Update DB status to PAID
-            await this.registrationService.updatePaymentStatus(
-                razorpayOrderId,
-                razorpayPaymentId,
-                'PAID',
-                ticketId
-            );
+            try {
+                // Finalize Registration: Move from Temp to Main
+                const registration = await this.registrationService.finalizeRegistration(
+                    razorpayOrderId,
+                    razorpayPaymentId
+                );
 
-            // Send Email
-            await this.mailService.sendTicketId(email, ticketId);
+                // Send Email
+                if (registration && registration.email) {
+                    const formatCategory = (cat: string) => {
+                        if (cat === 'KM_5') return '5 KM';
+                        if (cat === 'KM_3') return '3 KM';
+                        if (cat === 'KM_1_5') return '1.5 KM';
+                        return cat;
+                    };
+                    const displayCategory = formatCategory(registration.raceCategory as string);
 
-            return {
-                success: true,
-                message: 'Payment verified and Ticket ID sent to email',
-                ticketId,
-            };
+                    try {
+                        await this.mailService.sendTicketId(registration.email, registration.ticketId, registration.amount.toString(), {
+                            name: 'AYYAPANTHANGAL MARATHON 2026',
+                            venue: 'Ayyapanthangal',
+                            date: 'Sunday, 15 February 2026',
+                            category: displayCategory,
+                            userName: registration.name
+                        });
+                        emailSent = true;
+                    } catch (emailError) {
+                        console.error('Failed to send email:', emailError);
+                    }
+
+                    if (emailSent) {
+                        await this.registrationService.updateEmailStatus(registration.id, true);
+                    }
+
+                    return {
+                        success: true,
+                        message: 'Payment verified and Registration confirmed.',
+                        referenceNumber: registration.ticketId,
+                        emailSent,
+                        userDetails: {
+                            name: registration.name,
+                            email: registration.email,
+                            mobileNumber: registration.mobileNumber,
+                            category: displayCategory,
+                            amount: registration.amount
+                        }
+                    };
+                }
+
+            } catch (error) {
+                // If finalize fails (e.g. data already moved?), handle gracefully
+                throw new BadRequestException(error.message || 'Registration confirmation failed');
+            }
+
         } else {
-            // Update DB status to FAILED
-            await this.registrationService.updatePaymentStatus(
-                razorpayOrderId,
-                razorpayPaymentId,
-                'FAILED'
-            );
+            // Logic for failed payment - potentially delete temp registration or mark logic?
+            // For now, simple error
             throw new BadRequestException('Invalid payment signature');
         }
     }

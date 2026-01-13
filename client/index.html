@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Marathon Registration & Payment</title>
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <style>
+        body {
+            font-family: sans-serif;
+            max-width: 600px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        input,
+        select {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+        }
+
+        button {
+            background-color: #28a745;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        button:hover {
+            background-color: #218838;
+        }
+
+        #message {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Marathon Registration</h1>
+    <form id="registrationForm">
+        <div class="form-group">
+            <label>Name</label>
+            <input type="text" name="name" value="Test User" required>
+        </div>
+        <div class="form-group">
+            <label>Email</label>
+            <input type="email" name="email" id="email" value="test@example.com" required>
+        </div>
+        <div class="form-group">
+            <label>Mobile Number</label>
+            <input type="text" name="mobileNumber" value="+919999999999" required>
+        </div>
+        <div class="form-group">
+            <label>Gender</label>
+            <select name="gender">
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Date of Birth</label>
+            <input type="date" name="dateOfBirth" value="1995-01-01" required>
+        </div>
+        <div class="form-group">
+            <label>Age</label>
+            <input type="number" name="age" value="25" required>
+        </div>
+        <div class="form-group">
+            <label>Address</label>
+            <input type="text" name="presentAddress" value="Test Address" required>
+        </div>
+        <div class="form-group">
+            <label>T-Shirt Size</label>
+            <select name="tshirtSize">
+                <option value="M">M</option>
+                <option value="L">L</option>
+                <option value="XL">XL</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Race Category</label>
+            <select name="raceCategory">
+                <option value="KM_5">5 KM</option>
+                <option value="KM_3">3 KM</option>
+                <option value="KM_1_5">1.5 KM</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Emergency Contact Name</label>
+            <input type="text" name="emergencyContactName" value="Emergency Contact" required>
+        </div>
+        <div class="form-group">
+            <label>Emergency Contact Mobile</label>
+            <input type="text" name="emergencyContactMobile" value="+918888888888" required>
+        </div>
+
+        <input type="hidden" name="medicalHistory" value="None">
+        <input type="hidden" name="waiverAccepted" value="true">
+        <input type="hidden" name="amount" value="300">
+
+        <button type="submit" id="payBtn">Register & Pay ₹300</button>
+    </form>
+
+    <div id="message"></div>
+
+    <script>
+        const RAZORPAY_KEY_ID = 'rzp_test_S35m3ruk7s318p'; // Using the key provided earlier
+
+        document.getElementById('registrationForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+            const messageEl = document.getElementById('message');
+            messageEl.textContent = 'Registering...';
+            messageEl.className = '';
+
+            const formData = new FormData(e.target);
+            const data = {};
+            formData.forEach((value, key) => {
+                if (key === 'age' || key === 'amount') {
+                    data[key] = Number(value);
+                } else if (key === 'waiverAccepted') {
+                    data[key] = value === 'true';
+                } else {
+                    data[key] = value;
+                }
+            });
+
+            try {
+                // 1. Create Registration
+                const response = await fetch('http://localhost:5000/registrations', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.message || 'Registration failed');
+                }
+
+                const { razorpayOrderId, email } = result;
+
+                if (!razorpayOrderId) {
+                    throw new Error('No Razorpay Order ID returned');
+                }
+
+                // 2. Open Razorpay Checkout
+                const options = {
+                    "key": RAZORPAY_KEY_ID,
+                    "amount": data.amount * 100,
+                    "currency": "INR",
+                    "name": "Marathon Event",
+                    "description": "Registration Fee",
+                    "order_id": razorpayOrderId,
+                    "handler": async function (response) {
+                        console.log(response);
+                        messageEl.textContent = 'Payment successful! Verifying...';
+
+                        // 3. Verify Payment
+                        try {
+                            const verifyRes = await fetch('http://localhost:5000/payment/verify', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    razorpayOrderId: response.razorpay_order_id,
+                                    razorpayPaymentId: response.razorpay_payment_id,
+                                    signature: response.razorpay_signature,
+                                    //  email: email // We don't need to send email anymore as backend looks it up, but sending it doesn't hurt if we wanted to be redundant. The backend endpoint code I modified doesn't require it in body anymore.
+                                })
+                            });
+
+                            const verifyData = await verifyRes.json();
+                            if (verifyRes.ok) {
+                                messageEl.textContent = 'Success! Ticket ID: ' + verifyData.ticketId + '. Check your email.';
+                                messageEl.className = 'success';
+                            } else {
+                                throw new Error(verifyData.message || 'Verification failed');
+                            }
+
+                        } catch (err) {
+                            messageEl.textContent = 'Verification error: ' + err.message;
+                            messageEl.className = 'error';
+                        }
+                    },
+                    "prefill": {
+                        "name": data.name,
+                        "email": data.email,
+                        "contact": data.mobileNumber
+                    },
+                    "theme": {
+                        "color": "#3399cc"
+                    }
+                };
+
+                const rzp1 = new Razorpay(options);
+                rzp1.open();
+                e.preventDefault();
+
+            } catch (error) {
+                console.error(error);
+                messageEl.textContent = 'Error: ' + error.message;
+                messageEl.className = 'error';
+            }
+        });
+    </script>
+</body>
+
+</html>
